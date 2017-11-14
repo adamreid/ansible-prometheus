@@ -5,96 +5,43 @@
 #
 # @see http://prometheus.io/docs/introduction/getting_started/
 #
-
-- block:
-
-
-    - name: set internal variables for convenience, part 1
-      set_fact:
-        prometheus_alertmanager_signature: "alertmanager-{{ prometheus_alertmanager_version }}.{{ prometheus_platform_suffix }}"
+- name: set internal variables for convenience, part 1
+  set_fact:
+    prometheus_alertmanager_signature: "alertmanager-{{ prometheus_alertmanager_version }}.{{ prometheus_platform_suffix }}"
 
 
-    - name: set internal variables for convenience, part 2
-      set_fact:
-        prometheus_alertmanager_untar_path: "{{ prometheus_install_path }}"
-        prometheus_alertmanager_daemon_dir: "{{ prometheus_install_path }}/{{ prometheus_alertmanager_signature }}"
+- name: set internal variables for convenience, part 2
+  set_fact:
+    prometheus_alertmanager_untar_path: "{{ prometheus_install_path }}"
+    prometheus_alertmanager_tarball_path: "/tmp/{{ prometheus_alertmanager_signature }}.tar.gz"
+    prometheus_alertmanager_daemon_dir: "{{ prometheus_install_path }}/{{ prometheus_alertmanager_signature }}"
 
 
-    - name: set download url for versions >= 0.3.0
-      set_fact:
-        prometheus_alertmanager_tarball_url: "https://github.com/prometheus/alertmanager/releases/download/v{{ prometheus_alertmanager_version }}/{{ prometheus_alertmanager_signature }}.tar.gz"
-      when: prometheus_alertmanager_version | version_compare('0.3', '>=')
+- name: set download url for versions >= 0.3.0
+  set_fact:
+    prometheus_alertmanager_tarball_url: "https://github.com/prometheus/alertmanager/releases/download/v{{ prometheus_alertmanager_version }}/{{ prometheus_alertmanager_signature }}.tar.gz"
+  when: prometheus_alertmanager_version | version_compare('0.3', '>=')
 
-    - name: set download url for versions < 0.3.0 (OBSOLETE!)
-      set_fact:
-        prometheus_alertmanager_tarball_url: "https://github.com/prometheus/alertmanager/releases/download/{{ prometheus_alertmanager_version }}/{{ prometheus_alertmanager_signature }}.tar.gz"
-      when: prometheus_alertmanager_version | version_compare('0.3', '<')
-
-
-
-    - name: download and uncompress alertmanager tarball
-      unarchive:
-        src: "{{ prometheus_alertmanager_tarball_url }}"
-        dest: "{{ prometheus_alertmanager_untar_path }}"
-        copy: no
-        owner: "{{ prometheus_user }}"
-        group: "{{ prometheus_group }}"
-        mode: "go-w"
-
-  when: prometheus_alertmanager_version != "git"
+- name: set download url for versions < 0.3.0 (OBSOLETE!)
+  set_fact:
+    prometheus_alertmanager_tarball_url: "https://github.com/prometheus/alertmanager/releases/download/{{ prometheus_alertmanager_version }}/{{ prometheus_alertmanager_signature }}.tar.gz"
+  when: prometheus_alertmanager_version | version_compare('0.3', '<')
 
 
-- block:
+- name: download alertmanager tarball
+  get_url:
+    url: "{{ prometheus_alertmanager_tarball_url }}"
+    dest: "{{ prometheus_alertmanager_tarball_path }}"
 
-    - name: set internal variables for convenience
-      set_fact:
-        prometheus_alertmanager_git_url: "https://github.com/prometheus/alertmanager.git"
-        prometheus_alertmanager_src_path: "{{ prometheus_goroot }}/src/github.com/prometheus/alertmanager"
-        prometheus_alertmanager_daemon_dir: "{{ prometheus_install_path }}"
-
-    - name: install gcc for compiling go-sqlite3
-      action: "{{ ansible_pkg_mgr }} name=gcc state=present"
-
-    - name: install static libs for compiling source
-      yum: name=glibc-static state=present
-      when: ansible_pkg_mgr == "yum"
-
-    - name: delete the alertmanager build directory, if necessary
-      file: path="{{ prometheus_alertmanager_src_path }}" state=absent
-      when: prometheus_rebuild
-
-    - name: clone the alertmanager project src
-      git:
-        repo: "{{ prometheus_alertmanager_git_url }}"
-        dest: "{{ prometheus_alertmanager_src_path }}"
-        force: yes
-
-    - name: build alertmanager source code
-      command: make format build
-      #command: make
-      args:
-        chdir: "{{ prometheus_alertmanager_src_path }}"
-        creates: alertmanager
-      environment:
-        GO15VENDOREXPERIMENT: 1
-        GOROOT: "{{ prometheus_goroot }}"
-        GOPATH: "{{ prometheus_gopath }}"
-        PATH: "{{ ansible_env.PATH }}:{{ prometheus_goroot }}/bin:{{ prometheus_gopath }}/bin"
-
-    - name: copy the built alertmanager to the install path
-      command: "cp {{ prometheus_alertmanager_src_path }}/alertmanager {{ prometheus_install_path }}"
-      args:
-        creates: "{{ prometheus_install_path }}/alertmanager"
-
-    - name: set permissions, owner and group
-      file:
-        path: "{{ prometheus_install_path }}/alertmanager"
-        owner: "{{ prometheus_user }}"
-        group: "{{ prometheus_group }}"
-        mode: "go-w"
-
-  when: prometheus_alertmanager_version == "git"
-
+- name: uncompress alertmanager tarball
+  unarchive:
+    src: "{{ prometheus_alertmanager_tarball_path }}"
+    dest: "{{ prometheus_alertmanager_untar_path }}"
+    owner: "{{ prometheus_user }}"
+    group: "{{ prometheus_group }}"
+    mode: "go-w"
+    remote_src: yes
+    copy: no
 
 - name: mkdir for alertmanager data (silences.json for now)
   file:
